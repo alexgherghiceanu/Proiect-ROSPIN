@@ -58,7 +58,7 @@ def find_measurement_folder(safe_path):
 def main():
     args = parse_arguments()
     if not args.password:
-        args.password = "z-2-GW^R8MEiCe7"#getpass("Enter Copernicus password: ")
+        args.password = getpass("Enter Copernicus password: ")
 
     os.makedirs(args.download_dir, exist_ok=True)
 
