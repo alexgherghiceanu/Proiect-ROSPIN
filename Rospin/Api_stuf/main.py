@@ -1,141 +1,112 @@
-# Install necessary libraries (if not already installed)
-# pip install shapely rasterio
-
 import os
-import requests
-import zipfile
+import argparse
 from shapely.geometry import box
+from shapely import wkt
 from shapely.ops import transform
 import pyproj
 from getpass import getpass
 
-# === USER INPUTS ===
-USERNAME = input("Enter your username/email: ")
-PASSWORD = getpass("Enter your password: ")
-CLIENT_ID = "cdse-public"
+from copernicus_downloader import get_tokens, search_products, download_and_extract
+from flood_detection import detect_flood
+from database import save_flood_result, get_flood_events
 
-# Define output directory
-DOWNLOAD_DIR = "copernicus_data_S1"
-os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+def parse_arguments():
+    parser = argparse.ArgumentParser(description="Flood risk assessment with Sentinel-1 data.")
+    parser.add_argument("--username", type=str, required=True, help="Copernicus username/email")
+    parser.add_argument("--password", type=str, help="Copernicus password (or leave empty to enter securely)")
+    parser.add_argument("--start", type=str, required=True, help="Start date (YYYY-MM-DD)")
+    parser.add_argument("--end", type=str, required=True, help="End date (YYYY-MM-DD)")
+    parser.add_argument("--aoi", type=str, required=True,
+                        help="Area of Interest as WKT string OR bbox: minx,miny,maxx,maxy")
+    parser.add_argument("--buffer", type=int, default=2000,
+                        help="Buffer around AOI in meters (default: 2000m)")
+    parser.add_argument("--download_dir", type=str, default="copernicus_data_S1",
+                        help="Directory to store downloaded Sentinel-1 products")
+    return parser.parse_args()
 
-# Define date range (event window)
-start_date = "2021-12-01"
-end_date = "2022-01-15"
+def prepare_aoi(aoi_str, buffer_m):
+    try:
+        # If input looks like a bbox: four numbers separated by commas
+        parts = aoi_str.split(",")
+        if len(parts) == 4 and all(p.replace('.', '', 1).replace('-', '', 1).isdigit() for p in parts):
+            minx, miny, maxx, maxy = map(float, parts)
+            geom = box(minx, miny, maxx, maxy)
+        else:  # Assume WKT string
+            geom = wkt.loads(aoi_str)
+    except Exception as e:
+        raise ValueError(f"Invalid AOI format: {e}")
 
-# Example AOI (very small) → buffer it by ~2 km
-aoi = box(26.054215, 44.444096, 26.056807, 44.444091)
+    project = pyproj.Transformer.from_crs("EPSG:4326", "EPSG:3857", always_xy=True).transform
+    geom_buffered = transform(project, geom).buffer(buffer_m)
+    geom_buffered = transform(pyproj.Transformer.from_crs("EPSG:3857", "EPSG:4326", always_xy=True).transform, geom_buffered)
+    return geom_buffered.wkt
 
-project = pyproj.Transformer.from_crs("EPSG:4326", "EPSG:3857", always_xy=True).transform
-aoi_buffered = transform(project, aoi).buffer(2000)  # 2 km buffer
-aoi_buffered = transform(pyproj.Transformer.from_crs("EPSG:3857", "EPSG:4326", always_xy=True).transform, aoi_buffered)
-aoi_wkt = aoi_buffered.wkt
+def find_measurement_folder(safe_path):
+    # Check for nested .SAFE folder
+    for item in os.listdir(safe_path):
+        inner = os.path.join(safe_path, item)
+        if item.endswith('.SAFE') and os.path.isdir(inner):
+            measurement = os.path.join(inner, "measurement")
+            if os.path.isdir(measurement):
+                return measurement
+    # Fallback: check directly in safe_path
+    measurement = os.path.join(safe_path, "measurement")
+    if os.path.isdir(measurement):
+        return measurement
+    raise FileNotFoundError(f"No measurement folder found in {safe_path}")
 
-# === AUTHENTICATION ===
-def get_tokens():
-    token_url = "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token"
-    response = requests.post(
-        token_url,
-        data={
-            "client_id": CLIENT_ID,
-            "username": USERNAME,
-            "password": PASSWORD,
-            "grant_type": "password"
-        }
-    )
-    if response.status_code == 200:
-        token_data = response.json()
-        return token_data["access_token"], token_data["refresh_token"]
-    else:
-        raise Exception("Failed to retrieve tokens:", response.status_code, response.text)
+def main():
+    args = parse_arguments()
+    if not args.password:
+        args.password = "z-2-GW^R8MEiCe7"#getpass("Enter Copernicus password: ")
 
-def refresh_access_token(refresh_token):
-    token_url = "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token"
-    response = requests.post(
-        token_url,
-        data={
-            "client_id": CLIENT_ID,
-            "grant_type": "refresh_token",
-            "refresh_token": refresh_token
-        }
-    )
-    if response.status_code == 200:
-        return response.json()["access_token"]
-    else:
-        raise Exception("Failed to refresh access token:", response.status_code, response.text)
+    os.makedirs(args.download_dir, exist_ok=True)
 
-# Get tokens
-access_token, refresh_token = get_tokens()
-headers = {"Authorization": f"Bearer {access_token}"}
+    # Prepare AOI
+    aoi_wkt = prepare_aoi(args.aoi, args.buffer)
 
-# === SEARCH FOR PRODUCTS ===
-BASE_URL = "https://catalogue.dataspace.copernicus.eu/resto/api/collections/Sentinel1/search.json"
+    # Authenticate
+    access_token, refresh_token = get_tokens(args.username, args.password)
+    headers = {"Authorization": f"Bearer {access_token}"}
 
-query_params = {
-    "startDate": start_date,
-    "completionDate": end_date,
-    "productType": "GRD",
-    "sensorMode": "IW",          # Interferometric Wide Swath
-    # "polarisationMode": "VV VH", # Dual polarization
-    "geometry": aoi_wkt,
-    "maxRecords": 5             # allow more than 1 product
-}
+    # Search
+    products = search_products(headers, aoi_wkt, args.start, args.end)
+    if not products:
+        print("No products found.")
+        return
 
-response = requests.get(BASE_URL, params=query_params, headers=headers)
+    products.sort(key=lambda x: x["properties"]["startDate"])
+    pre_product, post_product = products[0], products[-1]
 
-if response.status_code == 200:
-    results = response.json()
-    products = results.get("features", [])
+    # Download & extract
+    pre_path = download_and_extract(pre_product, headers, args.download_dir)
+    post_path = download_and_extract(post_product, headers, args.download_dir)
 
-    if products:
-        print(f"Found {len(products)} Sentinel-1 products for the specified criteria.")
+    # Pick one TIFF file from SAFE folder (simplified)
+    pre_measurements = find_measurement_folder(pre_path)
+    post_measurements = find_measurement_folder(post_path)
 
-        # Sort by acquisition date
-        products.sort(key=lambda x: x["properties"]["startDate"])
+    pre_tif_files = [os.path.join(pre_measurements, f) for f in os.listdir(pre_measurements) if f.endswith(".tiff")]
+    post_tif_files = [os.path.join(post_measurements, f) for f in os.listdir(post_measurements) if f.endswith(".tiff")]
 
-        # Select first (earliest, pre-flood) and last (latest, post-flood)
-        selected = [products[0], products[-1]]
+    if not pre_tif_files or not post_tif_files:
+        raise FileNotFoundError("No .tiff files found in measurement folders.")
 
-        for product in selected:
-            title = product["properties"]["title"]
-            product_id = product["id"]
-            extract_path = os.path.join(DOWNLOAD_DIR, title)
-            zip_file_path = os.path.join(DOWNLOAD_DIR, f"{title}.zip")
+    pre_tif = pre_tif_files[0]
+    post_tif = post_tif_files[0]
 
-            if os.path.exists(extract_path):
-                print(f"Product {title} already extracted. Skipping...")
-                continue
+    # Flood detection
+    mask_path, flooded_pct, flooded_geom = detect_flood(pre_tif, post_tif, os.path.join(args.download_dir, "flood_mask.tif"))
 
-            if not os.path.exists(zip_file_path):
-                download_url = f"https://download.dataspace.copernicus.eu/odata/v1/Products({product_id})/$value"
-                session = requests.Session()
-                session.headers.update(headers)
+    # Save results
+    save_flood_result(aoi_wkt, pre_product, post_product, mask_path, flooded_pct, flooded_geom)
+    print(f"Flood detection completed. {flooded_pct:.2f}% flooded. Results saved to DB.")
 
-                download_response = session.get(download_url, stream=True)
-                if download_response.status_code == 401:
-                    access_token = refresh_access_token(refresh_token)
-                    session.headers.update({"Authorization": f"Bearer {access_token}"})
-                    download_response = session.get(download_url, stream=True)
+    # Show DB results
+    events = get_flood_events()
+    print("\nStored flood events:")
+    for e in events:
+        print(f" - Event {e.id}: {e.flooded_pct:.2f}% flooded on {e.post_date.date()}")
 
-                if download_response.status_code == 200:
-                    with open(zip_file_path, "wb") as file:
-                        for chunk in download_response.iter_content(chunk_size=8192):
-                            file.write(chunk)
-                    print(f"Downloaded {title}.")
-                else:
-                    print(f"Failed to download {title}. Status code: {download_response.status_code}")
-                    continue
-            else:
-                print(f"Zip file for {title} already exists. Skipping download...")
-
-            # Extract product
-            if not os.path.exists(extract_path):
-                with zipfile.ZipFile(zip_file_path, 'r') as zip_ref:
-                    zip_ref.extractall(extract_path)
-                print(f"Extracted {title}.")
-
-    else:
-        print("No Sentinel-1 products found. Try different dates or expand AOI.")
-else:
-    print(f"Search request failed: {response.status_code} {response.text}")
-
-print("Process completed.")
+if __name__ == "__main__":
+    main()
