@@ -1,53 +1,60 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
+import { apiPost } from "../api/client";
+import "../styles.css";
 
 export default function Register() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const navigate = useNavigate();
+  const [confirm, setConfirm] = useState("");
+  const [err, setErr] = useState("");
+  const [loading, setLoading] = useState(false);
+  const nav = useNavigate();
 
-  const register = async () => {
+  const submit = async (e) => {
+    e.preventDefault();
+    setErr("");
+    if (password !== confirm) { setErr("Passwords do not match."); return; }
+    setLoading(true);
     try {
-      const res = await fetch("http://localhost:5000/register", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        localStorage.setItem("token", data.token || ""); // store token if backend returns one
-        navigate("/dashboard"); // ✅ redirect after register
-      } else {
-        alert(data.error);
-      }
-    } catch (err) {
-      alert("Something went wrong!");
+      // Your backend may return token or just success; we’ll navigate to login on success
+      await apiPost("/register", { username, password });
+      nav("/login");
+    } catch (e) {
+      setErr(typeof e === "string" ? e : (e.message || "Registration failed"));
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <div className="flex flex-col items-center justify-center h-screen">
-      <h2 className="text-2xl mb-4">Register</h2>
-      <input
-        type="text"
-        placeholder="Username"
-        className="border p-2 mb-2"
-        value={username}
-        onChange={(e) => setUsername(e.target.value)}
-      />
-      <input
-        type="password"
-        placeholder="Password"
-        className="border p-2 mb-2"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-      />
-      <button
-        onClick={register}
-        className="bg-blue-500 text-white px-4 py-2 rounded"
-      >
-        Register
-      </button>
+    <div className="page center">
+      <form onSubmit={submit} className="card auth-card stack">
+        <h2 style={{margin:0}}>Create account</h2>
+        <p className="note" style={{marginTop:-6}}>Join ROSPIN and start analyzing floods.</p>
+
+        {err && <div className="alert">{err}</div>}
+
+        <div>
+          <label className="label">Username</label>
+          <input className="input" value={username} onChange={e=>setUsername(e.target.value)} autoComplete="username" />
+        </div>
+        <div>
+          <label className="label">Password</label>
+          <input className="input" type="password" value={password} onChange={e=>setPassword(e.target.value)} autoComplete="new-password" />
+        </div>
+        <div>
+          <label className="label">Confirm password</label>
+          <input className="input" type="password" value={confirm} onChange={e=>setConfirm(e.target.value)} autoComplete="new-password" />
+        </div>
+
+        <div className="actions">
+          <button className="btn primary" type="submit" disabled={loading || !username || !password || !confirm}>
+            {loading ? "Creating…" : "Register"}
+          </button>
+          <Link className="btn" to="/login">Back to login</Link>
+        </div>
+      </form>
     </div>
   );
 }
