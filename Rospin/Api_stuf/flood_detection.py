@@ -3,6 +3,7 @@ import rasterio
 import numpy as np
 import rasterio.features
 from shapely.geometry import shape, MultiPolygon
+from rasterio.vrt import WarpedVRT
 
 def find_measurement_tiff(safe_dir):
     """
@@ -17,13 +18,22 @@ def find_measurement_tiff(safe_dir):
     raise FileNotFoundError(f"No measurement TIFF found in SAFE folder: {safe_dir}")
 
 def get_sentinel1_georef(safe_path):
+    """
+    Reads a Sentinel-1 GeoTIFF (or .SAFE folder) and returns the array, transform, and CRS.
+    """
     if os.path.isdir(safe_path):
         tiff_path = find_measurement_tiff(safe_path)
     else:
         tiff_path = safe_path
+
     with rasterio.open(tiff_path) as src:
-        arr = src.read(1).astype("float32")
-        return arr, src.transform, src.crs
+        # Properly define vrt using a 'with' statement
+        with WarpedVRT(src) as vrt:
+            arr = vrt.read(1)
+            transform = vrt.transform
+            crs = vrt.crs
+
+    return arr, transform, crs
 
 def detect_flood(pre_safe, post_safe, output_mask):
     """
