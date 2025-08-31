@@ -1,0 +1,6 @@
+flask
+pymongo
+requests
+numpy
+scikit-learn
+rasterio
