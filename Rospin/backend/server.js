@@ -20,7 +20,7 @@ mongoose.connect(process.env.MONGO_URI, {
 
 // User Schema
 const userSchema = new mongoose.Schema({
-  username: { type: String, unique: true, required: true },
+  email: { type: String, unique: true, required: true },
   password: { type: String, required: true },
 });
 
@@ -31,17 +31,22 @@ const User = mongoose.model("User", userSchema);
 
 // Register
 app.post("/register", async (req, res) => {
+  const { email, password } = req.body;
   try {
-    const { username, password } = req.body;
+    const { email, password } = req.body;
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ error: "Invalid email format" });
+    }
 
     // Check if user already exists
-    const existingUser = await User.findOne({ username });
+    const existingUser = await User.findOne({ email });
     if (existingUser) {
-      return res.status(400).json({ error: "Username already exists" });
+      return res.status(400).json({ error: "Email already exists" });
     }
 
     const hashed = await bcrypt.hash(password, 10);
-    const user = new User({ username, password: hashed });
+    const user = new User({ email, password: hashed });
     await user.save();
 
     res.json({ message: "User registered!" });
@@ -53,9 +58,9 @@ app.post("/register", async (req, res) => {
 
 // Login
 app.post("/login", async (req, res) => {
-  const { username, password } = req.body;
+  const { email, password } = req.body;
 
-  const user = await User.findOne({ username });
+  const user = await User.findOne({ email });
   if (!user) return res.status(400).json({ error: "Invalid credentials" });
 
   const valid = await bcrypt.compare(password, user.password);

@@ -4,3 +4,7 @@ requests
 numpy
 scikit-learn
 rasterio
+shapely
+sqlalchemy
+pyproj
+rasterio
