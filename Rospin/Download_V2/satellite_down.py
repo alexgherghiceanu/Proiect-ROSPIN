@@ -490,16 +490,20 @@ class SafeProcessor:
 # -----------------------------
 # Example usage
 # -----------------------------
-if __name__ == "__main__":
+'''if __name__ == "__main__":
     processor = SafeProcessor(max_pixels=1_000_000)  # reduce this if process still OOMs
     s1_folders = [
         "downloads/S1C_IW_GRDH_1SDV_20250904T160801_20250904T160826_003977_007E9B_80D4.SAFE",
         "downloads/S1C_IW_GRDH_1SDV_20250903T042048_20250903T042113_003955_007DFD_0404.SAFE",
+       # "downloads/S1A_IW_GRDH_1SDV_20230124T160923_20230124T160948_046928_05A0CA_E9E9.SAFE"
+        "downloads/S1A_IW_GRDH_1SDV_20230116T043009_20230116T043034_046804_059C91_925E.SAFE"
     ]
     # optional mapping S1->S2
     s2_map = {
-         "downloads/S1C_IW_GRDH_1SDV_20250904T160801_20250904T160826_003977_007E9B_80D4.SAFE": "downloads/S2A_MSIL2A_20250903T091041_N0511_R050_T35TMK_20250903T134304.SAFE"
+         "downloads/S1C_IW_GRDH_1SDV_20250904T160801_20250904T160826_003977_007E9B_80D4.SAFE": "downloads/S2A_MSIL2A_20250903T091041_N0511_R050_T35TMK_20250903T134304.SAFE",
+         "downloads/S1A_IW_GRDH_1SDV_20230116T043009_20230116T043034_046804_059C91_925E.SAFE": "downloads/S2A_MSIL2A_20230306T090831_N0510_R050_T35TMK_20240820T071440.SAFE"
     }
 
     df = processor.process_safe_folders(s1_folders, output_prefix="bucharest_flood", s2_mapping=s2_map)
     print(df.head())
+'''
