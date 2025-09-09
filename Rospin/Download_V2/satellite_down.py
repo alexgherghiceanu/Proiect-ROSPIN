@@ -438,11 +438,11 @@ class SafeProcessor:
                 row = self.process_safe_product(safe_dir, sentinel2_safe_dir=s2_dir)
                 dt = self.extract_datetime_from_safe(safe_dir)
                 row["year"] = dt.year if dt is not None else None
+                row["safe_name"] = os.path.basename(safe_dir)   # 🔑 add here
                 rows.append(row)
                 print(f"Processed {safe_dir}")
             except Exception as e:
                 print(f"Failed {safe_dir}: {e}")
-                # append empty row of NaNs (keeps consistent columns)
                 empty = {c: np.nan for c in [
                     "label", "year", "lat", "lon",
                     "single_NDVI_mean", "single_NDVI_std", "single_NDVI_min", "single_NDVI_max",
@@ -455,14 +455,17 @@ class SafeProcessor:
                     "single_Dry_Percentage_mean", "single_Dry_Percentage_std", "single_Dry_Percentage_min", "single_Dry_Percentage_max",
                     "single_Drought_Mask_mean", "single_Drought_Mask_std", "single_Drought_Mask_min", "single_Drought_Mask_max",
                     "single_SAR_Urban_Mask_mean", "single_SAR_Urban_Mask_std", "single_SAR_Urban_Mask_min", "single_SAR_Urban_Mask_max",
-                    "lat_rounded", "lon_rounded"
+                    "lat_rounded", "lon_rounded", "safe_name"
                 ]}
                 dt = self.extract_datetime_from_safe(safe_dir)
                 empty["year"] = dt.year if dt else np.nan
                 empty["label"] = -1
+                empty["safe_name"] = os.path.basename(safe_dir)   # 🔑 also here
                 rows.append(empty)
 
         df = pd.DataFrame(rows)
+    
+
 
         cols_order = [
             "label", "year", "lat", "lon",
