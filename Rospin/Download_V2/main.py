@@ -1,4 +1,3 @@
-# main.py
 import os
 import pandas as pd
 from getpass import getpass
@@ -6,6 +5,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from downloader import get_tokens, search_products, download_and_extract
 from satellite_down import SafeProcessor
+from predict_flood import predict_flood
 
 
 def main():
@@ -65,7 +65,7 @@ def main():
                     print(f"{product['properties']['title']} downloaded and extracted to: {path}")
                     paths.append(path)
                 except Exception as e:
-                    print(f"❌ Error downloading {product['properties']['title']}: {e}")
+                    print(f"Error downloading {product['properties']['title']}: {e}")
 
     # split into S1 / S2 paths
     s1_paths = [p for p in paths if "S1" in os.path.basename(p)]
@@ -122,6 +122,22 @@ def main():
 
         combined_csv.to_csv(csv_file, index=False)
 
+        try:
+            preds = predict_flood(
+                csv_features_path=csv_file,
+                model_path="flood_model.pkl",   # schimbă dacă modelul e în altă locație
+                scaler_path=None,               # pune calea scaler-ului dacă ai unul separat
+                out_csv="flood_risk.csv"
+            )
+            if preds is None or not isinstance(preds, pd.DataFrame):
+                raise RuntimeError("predict_flood nu a întors un DataFrame.")
+            print("flood_risk.csv generat.")
+            print("Preds shape:", preds.shape)
+            print(preds.head(3))
+        except Exception as e:
+            print(f"Prediction failed: {e}")
+
+
         # --- Save to HDF5 (merge + deduplicate) ---
         h5_file = "bucharest_flood.h5"
         if os.path.exists(h5_file):
@@ -139,10 +155,10 @@ def main():
         # Always rewrite in table format for future appending
         combined_h5.to_hdf(h5_file, key="data", mode="w", format="table")
 
-        print(f"✅ Results updated (deduplicated) in {csv_file} and {h5_file}")
+        print(f"Results updated (deduplicated) in {csv_file} and {h5_file}")
 
     else:
-        print("⚠️ No Sentinel-1 products available for processing.")
+        print("No Sentinel-1 products available for processing.")
 
 
 
