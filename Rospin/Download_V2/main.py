@@ -17,8 +17,8 @@ def main():
 
     # --- Search area and dates (Bucharest AOI example) ---
     aoi_wkt = "POLYGON((26.0 44.4, 26.2 44.4, 26.2 44.6, 26.0 44.6, 26.0 44.4))"
-    start_date = "2023-01-01T00:00:00Z"
-    end_date = "2023-12-31T23:59:59Z"
+    start_date = "2021-01-01T00:00:00Z"
+    end_date = "2021-12-31T23:59:59Z"
 
     download_dir = "downloads"
     os.makedirs(download_dir, exist_ok=True)
@@ -92,17 +92,59 @@ def main():
         if closest_s2:
             s2_map[s1_path] = closest_s2
     '''
-    s2_map = {s2_paths}
+    s2_map = dict(zip(s1_paths, s2_paths))
+    # --- Process and save ---
+        # --- Process and save ---
     # --- Process and save ---
     if s1_paths:
-        df = processor.process_safe_folders(s1_paths, output_prefix="bucharest_flood", s2_mapping=s2_map)
+        df = processor.process_safe_folders(
+            s1_paths, output_prefix="bucharest_flood", s2_mapping=s2_map
+        )
+        print(df)
 
-        # also save to HDF5
+        # Ensure new data always has safe_name
+        if "safe_name" not in df.columns:
+            df["safe_name"] = [os.path.basename(p) for p in s1_paths]
+
+        # --- Save to CSV (merge + deduplicate) ---
+        csv_file = "bucharest_flood.csv"
+        if os.path.exists(csv_file):
+            old_df = pd.read_csv(csv_file)
+
+            # Ensure old data has safe_name
+            if "safe_name" not in old_df.columns:
+                old_df["safe_name"] = None
+
+            combined_csv = pd.concat([old_df, df], ignore_index=True)
+            combined_csv = combined_csv.drop_duplicates(subset=["safe_name"], keep="last")
+        else:
+            combined_csv = df
+
+        combined_csv.to_csv(csv_file, index=False)
+
+        # --- Save to HDF5 (merge + deduplicate) ---
         h5_file = "bucharest_flood.h5"
-        df.to_hdf(h5_file, key="data", mode="a")
-        print(f"Saved results to {h5_file}")
+        if os.path.exists(h5_file):
+            old_df = pd.read_hdf(h5_file, key="data")
+
+            # Ensure old data has safe_name
+            if "safe_name" not in old_df.columns:
+                old_df["safe_name"] = None
+
+            combined_h5 = pd.concat([old_df, df], ignore_index=True)
+            combined_h5 = combined_h5.drop_duplicates(subset=["safe_name"], keep="last")
+        else:
+            combined_h5 = df
+
+        # Always rewrite in table format for future appending
+        combined_h5.to_hdf(h5_file, key="data", mode="w", format="table")
+
+        print(f"✅ Results updated (deduplicated) in {csv_file} and {h5_file}")
+
     else:
         print("⚠️ No Sentinel-1 products available for processing.")
+
+
 
 
 if __name__ == "__main__":
