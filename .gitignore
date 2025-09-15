@@ -1,0 +1,15 @@
+# deps & build
+**/node_modules/
+**/dist/
+**/build/
+
+# python
+**/.venv/
+**/__pycache__/
+**/*.db
+Rospin/Api_stuf/copernicus_data_S1/
+
+# env files
+**/.env
+**/.env.local
+**/.env.*.local
