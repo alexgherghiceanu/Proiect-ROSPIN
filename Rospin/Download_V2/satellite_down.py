@@ -83,8 +83,9 @@ class SafeProcessor:
                             lon_el = child
                     if lat_el is not None and lon_el is not None:
                         try:
-                            lat_list.append(float(lat_el.text))
-                            lon_list.append(float(lon_el.text))
+                            if lat_el.text is not None and lon_el.text is not None:
+                                lat_list.append(float(lat_el.text))
+                                lon_list.append(float(lon_el.text))
                         except Exception:
                             continue
 
@@ -154,8 +155,8 @@ class SafeProcessor:
         vv_n = normalize_0_1(vv_arr)
         vh_n = normalize_0_1(vh_arr)
 
-        vv_stats = self._band_stats(vv_n)
-        vh_stats = self._band_stats(vh_n)
+        vv_stats = self._band_stats(vv_n if vv_n is not None else np.array([]))
+        vh_stats = self._band_stats(vh_n if vh_n is not None else np.array([]))
 
         # compute center lat/lon: prefer raster transform if crs present; else parse annotation
         lat = lon = None
@@ -194,7 +195,7 @@ class SafeProcessor:
     # Sentinel-2 processing (optional)
     # ------------------------
     def _find_s2_band_files(self, s2_safe_dir: str) -> Dict[str, Optional[str]]:
-        bands = {"B03": None, "B04": None, "B08": None, "B11": None}
+        bands: Dict[str, Optional[str]] = {"B03": None, "B04": None, "B08": None, "B11": None}
         for root, _, files in os.walk(s2_safe_dir):
             for f in files:
                 fn = f.upper()
@@ -209,10 +210,19 @@ class SafeProcessor:
             return None
 
         # read with limiting
-        red, _ = self._read_band_limited(bands["B04"])
-        green, _ = self._read_band_limited(bands["B03"])
-        nir, profile = self._read_band_limited(bands["B08"])
-        swir, _ = self._read_band_limited(bands["B11"])
+        red = None
+        if bands["B04"] is not None:
+            red, _ = self._read_band_limited(bands["B04"])
+        green = None
+        if bands["B03"] is not None:
+            green, _ = self._read_band_limited(bands["B03"])
+        nir = None
+        profile = None
+        if bands["B08"] is not None:
+            nir, profile = self._read_band_limited(bands["B08"])
+        swir = None
+        if bands["B11"] is not None:
+            swir, _ = self._read_band_limited(bands["B11"])
 
         if any(x is None for x in [red, green, nir, swir]):
             return None
@@ -314,15 +324,21 @@ class SafeProcessor:
                 # distance_transform_edt expects boolean (non-zero = feature), we want distance to water pixels,
                 # so invert: distance from non-water pixels to nearest water pixel.
                 not_water = 1.0 - water_mask
-                dist_pixels = distance_transform_edt(not_water)
+                if _HAS_SCIPY:
+                    dist_pixels = distance_transform_edt(not_water)
+                else:
+                    dist_pixels = np.nan
                 # approximate pixel size: try from profile (if available)
                 prof = s2_res.get("s2_profile") if s2_res else None
                 if prof and "transform" in prof:
                     px = abs(prof["transform"][0])
                 else:
                     px = 1.0
-                dist_m = dist_pixels * px
-                water_distance_stats = self._band_stats(dist_m)
+                if isinstance(dist_pixels, np.ndarray):
+                    dist_m = dist_pixels * px
+                else:
+                    dist_m = np.nan
+                water_distance_stats = self._band_stats(np.array(dist_m) if not isinstance(dist_m, np.ndarray) else dist_m)
             except Exception:
                 water_distance_stats = (np.nan, np.nan, np.nan, np.nan)
         else:
@@ -402,8 +418,8 @@ class SafeProcessor:
             "single_SAR_Urban_Mask_min": urban_stats[2],
             "single_SAR_Urban_Mask_max": urban_stats[3],
 
-            "lat_rounded": round(s1_res.get("lat"), 3) if s1_res.get("lat") is not None else None,
-            "lon_rounded": round(s1_res.get("lon"), 3) if s1_res.get("lon") is not None else None,
+            "lat_rounded": round(float(s1_res["lat"]), 3) if s1_res.get("lat") is not None else None,
+            "lon_rounded": round(float(s1_res["lon"]), 3) if s1_res.get("lon") is not None else None,
         }
 
         # explicitly delete big arrays (if any) to free memory
@@ -430,7 +446,7 @@ class SafeProcessor:
                 return None
         return None
 
-    def process_safe_folders(self, safe_folders: list, output_prefix="output", s2_mapping: dict = None) -> pd.DataFrame:
+    def process_safe_folders(self, safe_folders: list, output_prefix="output", s2_mapping: Optional[dict] = None) -> pd.DataFrame:
         rows = []
         for safe_dir in safe_folders:
             try:

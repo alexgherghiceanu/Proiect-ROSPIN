@@ -13,6 +13,48 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
+const DL = process.env.DL_API_URL || "http://download:8010"; // default corect pt Docker
+
+// Health → proxy la Flask /health
+app.get("/api/download/health", async (req, res) => {
+  try {
+    const r = await fetch(`${DL}/health`);
+    const txt = await r.text();
+    // dacă e JSON, returnează JSON; altfel text
+    try { res.status(r.ok ? 200 : 500).json(JSON.parse(txt)); }
+    catch { res.status(r.ok ? 200 : 500).send(txt); }
+  } catch (e) {
+    res.status(502).json({ error: "Download service unreachable", detail: String(e.message || e) });
+  }
+});
+
+// Run → proxy la Flask /run  (BODY: {bbox, wkt, start, end})
+// POST /api/download/run  -> proxy la Flask (/run sau /download)
+app.post("/api/download/run", async (req, res) => {
+  const body = JSON.stringify(req.body ?? {});
+  const headers = { "Content-Type": "application/json" };
+
+  async function tryPath(path) {
+    const r = await fetch(`${DL}${path}`, { method: "POST", headers, body });
+    const txt = await r.text();
+    try { return { status: r.status, ok: r.ok, json: JSON.parse(txt) }; }
+    catch { return { status: r.status, ok: r.ok, text: txt }; }
+  }
+
+  try {
+    // 1) încearcă /run
+    let resp = await tryPath("/run");
+    // 2) dacă nu există, încearcă /download
+    if (resp.status === 404) resp = await tryPath("/download");
+
+    if (resp.json) return res.status(resp.ok ? 200 : resp.status).json(resp.json);
+    return res.status(resp.ok ? 200 : resp.status).send(resp.text);
+  } catch (e) {
+    return res.status(500).json({ error: "Download service error", detail: String(e.message || e) });
+  }
+});
+
+
 // ---- Download service base URL (single source of truth) ----
 // In Docker compose networking, use http://download:8010
 // Locally (without Docker), use http://localhost:8010
@@ -89,62 +131,59 @@ app.get("/api/health", (req, res) => {
 // ---------------------- Download_V2 proxies ----------------------
 
 // GET /api/download/health  -> proxies to Flask /health
+// --- keep your imports & app setup as-is above ---
+
+// Health proxy stays the same
 app.get("/api/download/health", async (req, res) => {
   try {
-    const r = await fetch(`${DOWNLOAD_BASE}/health`, { method: "GET" });
-    const text = await r.text();
-    const ct = r.headers.get("content-type") || "";
-    if (ct.includes("application/json")) {
-      return res.status(r.status).json(JSON.parse(text));
-    }
-    return res.status(r.status).type(ct || "text/plain").send(text);
+    const r = await fetch(`${DL}/health`);
+    const txt = await r.text();
+    try { res.status(r.ok ? 200 : 500).json(JSON.parse(txt)); }
+    catch { res.status(r.ok ? 200 : 500).send(txt); }
   } catch (e) {
-    console.error("download/health error:", e);
-    res
-      .status(502)
-      .json({ error: "Download service unreachable", detail: String(e) });
+    res.status(502).json({ error: "Download service unreachable", detail: String(e.message || e) });
   }
 });
 
-// POST /api/download/run -> proxies to Flask /run
-// Body can include: { bbox, wkt, start, end, startDate, endDate, ... } (we forward as-is)
-// Run: POST /api/download/run  -> proxy to Flask (/run or /download)
+// === Accept both legacy ({bbox,wkt,start,end}) and new ({aoi,start,end}) ===
 app.post("/api/download/run", async (req, res) => {
-  const base = process.env.DL_API_URL || "http://download:8010";
-  const payload = {
-    bbox:  req.body.bbox,
-    wkt:   req.body.wkt,
-    start: req.body.start,
-    end:   req.body.end,
-  };
+  try {
+    let { aoi, bbox, wkt, start, end } = req.body || {};
 
-  async function hit(path) {
-    const r = await fetch(`${base}${path}`, {
+    // Build 'aoi' if the UI sent legacy fields
+    if (!aoi) {
+      if (bbox) aoi = { type: "bbox", value: String(bbox) };
+      else if (wkt) aoi = { type: "wkt", value: String(wkt) };
+    }
+
+    // Basic guard (and echo what we got for easier debugging)
+    if (!aoi || !start || !end) {
+      return res.status(400).json({ ok: false, error: "Missing aoi/start/end", got: req.body });
+    }
+
+    // Normalize payload for Flask
+    const payload = {
+      aoi,
+      start: String(start).slice(0, 10),
+      end: String(end).slice(0, 10),
+    };
+
+    // Forward to Flask NEW endpoint (/download)
+    const r = await fetch(`${DL}/download`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
-    const text = await r.text();
-    return { status: r.status, ok: r.ok, text };
-  }
 
-  try {
-    // try /run first; if 404, try /download
-    let r = await hit("/run");
-    if (r.status === 404) r = await hit("/download");
-
-    try {
-      const json = JSON.parse(r.text);
-      return res.status(r.ok ? 200 : r.status).json(json);
-    } catch {
-      return res.status(r.ok ? 200 : r.status).send(r.text);
-    }
+    const txt = await r.text();
+    let out;
+    try { out = JSON.parse(txt); } catch { out = { raw: txt }; }
+    res.status(r.ok ? 200 : 500).json(out);
   } catch (e) {
-    return res
-      .status(502)
-      .json({ error: "Download service unreachable", detail: String(e.message || e) });
+    res.status(500).json({ ok: false, error: "Download service error", detail: String(e.message || e) });
   }
 });
+
 
 
 // (kept) legacy route if your UI ever calls it

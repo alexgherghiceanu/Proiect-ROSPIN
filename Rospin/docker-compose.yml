@@ -1,39 +1,13 @@
+# docker-compose.yml
 services:
-  mongo:
-    image: mongo:6
-    ports:
-      - "27017:27017"
-    volumes:
-      - mongo_data:/data/db
-
-  download:
-    build:
-      context: ./Download_V2
-      dockerfile: Dockerfile
-    environment:
-      - DL_API_PORT=8010
-      # move these to .env if you can:
-      - COPERNICUS_USER=${COPERNICUS_USER}
-      - COPERNICUS_PASS=${COPERNICUS_PASS}
-    volumes:
-      # local folder for downloaded data (create it if missing)
-      - ./data:/app/data
-    ports:
-      - "8010:8010"
-    healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:8010/health"]
-      interval: 30s
-      timeout: 5s
-      retries: 5
-
   backend:
     build: ./backend
     ports:
       - "5000:5000"
     env_file: .env
     environment:
+      # backend must call the Flask "download" service by its Docker DNS name
       - DL_API_URL=http://download:8010
-      - DOWNLOAD_BASE=http://download:8010
     depends_on:
       - mongo
       - download
@@ -49,15 +23,24 @@ services:
     depends_on:
       - backend
 
-  python:
-    build: ./Api_stuf
+  download:
+    build:
+      context: ./Download_V2
+      dockerfile: Dockerfile
+    env_file:
+      - download.env           # << put Copernicus creds here (see below)
+    volumes:
+      - ./Rospin/data:/app/data
     ports:
-      - "8000:8000"
-    env_file: .env
-    depends_on:
-      - mongo
+      - "8010:8010"
 
+  mongo:
+    image: mongo:6
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+# Named volumes must live at the TOP level (not under services)
 volumes:
   mongo_data:
-
-

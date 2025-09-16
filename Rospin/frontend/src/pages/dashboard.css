@@ -1,78 +1,188 @@
-:root{
-    --bg:#0f172a;        /* header bg */
-    --surface:#ffffff;
-    --muted:#6b7280;
-    --border:#e5e7eb;
-    --brand:#2563eb;
-    --success:#16a34a;
-    --danger:#ef4444;
+/* ===========================
+   DASHBOARD LAYOUT & BASICS
+   =========================== */
+
+.dash-page{
+  /* keep room below your fixed header (56px in your styles.css) */
+  padding-top: 8px;
+}
+
+.dash-layout{
+  display:grid;
+  grid-template-columns: 380px 1fr;
+  gap:16px;
+  align-items:stretch;
+}
+
+/* map area */
+.dash-map{
+  position:relative;
+  background:#0b1225;
+  border-radius:14px;
+  overflow:hidden;
+  border:1px solid var(--border);
+  box-shadow:0 10px 30px rgba(2,6,23,.35);
+}
+
+/* hide the old close button if it still exists in markup */
+.dash-close{ display:none !important; }
+
+/* ===========================
+   SIDEBAR – DARK GLASS
+   =========================== */
+
+.dash-sidebar{
+  width: 380px;
+  max-width: 90vw;
+  background: linear-gradient(180deg,#0b1225cc,#0b1225aa);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px;
+  color: #e6eeff;
+  overflow: auto;
+  box-shadow: 0 20px 60px rgba(2,6,23,.45);
+  backdrop-filter: blur(10px);
+}
+
+/* headings / text inside sidebar */
+.dash-sidebar h1,
+.dash-sidebar h2,
+.dash-sidebar h3{ color:#fff; margin: 6px 0 10px; }
+.dash-sidebar p, .dash-sidebar .muted{ color:#a7b7d9; }
+
+/* section/card blocks inside sidebar */
+.dash-sidebar .card{
+  background: var(--surface);
+  border: 1px solid #ffffff1a;
+  border-radius: 16px;
+  padding: 12px;
+  margin-bottom: 14px;
+  color:#dbe7ff;
+  box-shadow: 0 14px 40px rgba(2,6,23,.25);
+}
+
+/* little step badge on titles */
+.stepBadge{
+  display:inline-grid; place-items:center;
+  width:26px; height:26px; margin-right:8px;
+  border-radius:999px; font-weight:800; font-size:13px;
+  color:#052e16; background:linear-gradient(135deg,#bbf7d0,#86efac);
+  border:1px solid #6ee7b7;
+  box-shadow:0 6px 18px rgba(16,185,129,.18);
+}
+
+/* buttons inside the sidebar: keep contrast high on dark */
+.dash-sidebar .btn.ghost{ color:#fff; border-color:#ffffff3a; }
+.dash-sidebar .btn.primary,
+.dash-sidebar .btn.success,
+.dash-sidebar .btn.danger{ color:#fff; }
+
+/* labels/inputs on dark */
+.dash-sidebar .label{
+  display:block; font-size:12px; font-weight:700;
+  color:#c7d7ff; margin:10px 0 6px;
+}
+.dash-sidebar .input,
+.dash-sidebar .textarea{
+  width:100%; color:#eaf2ff;
+  background:#0e1933; border:1px solid #ffffff1a;
+  border-radius:12px; padding:10px 12px; font:inherit; outline:none;
+}
+.dash-sidebar .input::placeholder,
+.dash-sidebar .textarea::placeholder{ color:#9bb1d1; }
+.dash-sidebar .input:focus,
+.dash-sidebar .textarea:focus{
+  border-color:#22d3ee80; box-shadow:0 0 0 4px var(--ring);
+}
+
+/* status/info box (task output) */
+.dash-sidebar .status{
+  margin-top:10px; padding:10px 12px; border-radius:12px;
+  background:#0e1933; border:1px solid #ffffff1a; color:#cfe4ff;
+  box-shadow:0 8px 24px rgba(2,6,23,.25);
+  font-size: 13px;
+  white-space: pre-wrap;
+}
+
+/* small helpers */
+.row{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+.grid2{ display:grid; gap:10px; grid-template-columns:1fr 1fr; }
+
+/* Advanced <details> styling */
+.advanced{
+  margin-top:10px; border-radius:12px; overflow:hidden;
+  border:1px solid #ffffff1a; background:#0e1933;
+}
+.advanced summary{
+  cursor:pointer; padding:10px 12px; font-weight:700; color:#eaf2ff;
+  list-style:none; outline:none;
+}
+.advanced summary::-webkit-details-marker{ display:none; }
+.advanced .content{ padding:10px 12px; color:#cfe4ff; }
+
+/* ===========================
+   MOBILE / TABLET BEHAVIOUR
+   =========================== */
+
+@media (max-width: 1200px){
+  .dash-layout{
+    grid-template-columns: 340px 1fr;
   }
-  
-  .dash-header{
-    background:var(--bg);
-    color:#fff;
-    padding:12px 16px;
-    font-weight:700;
-    letter-spacing:.3px;
+  .dash-sidebar{ width:340px; }
+}
+
+@media (max-width: 1024px){
+  .dash-layout{
+    /* keep grid for desktop; on mobile we switch to off-canvas */
+    grid-template-columns: 1fr;
   }
-  
   .dash-sidebar{
-    background:#f8fafc;
-    border-right:1px solid var(--border);
-    padding:16px;
+    position: fixed; top: 56px; bottom: 0; left: 0; z-index: 50;
+    width: 86vw; max-width: 420px;
+    transform: translateX(-100%);
+    transition: transform .25s ease;
+    border-right: 1px solid var(--border);
+    border-left: none;
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
   }
-  
-  .h2{
-    font-weight:700;
-    font-size:20px;
-    margin:0 0 12px;
+  .dash-sidebar.open{ transform: translateX(0); }
+
+  .dash-overlay{
+    position: fixed; inset: 56px 0 0 0; z-index: 40;
+    background: rgba(2,6,23,.55);
+    backdrop-filter: blur(2px);
   }
-  
-  .label{
-    display:block;
-    font-size:12px;
-    font-weight:600;
-    color:#334155;
-    margin-bottom:6px;
-  }
-  
-  .input, .textarea{
-    width:100%;
-    border:1px solid var(--border);
-    border-radius:8px;
-    padding:10px 12px;
-    font:inherit;
-  }
-  
-  .textarea{ min-height:72px; resize:vertical; }
-  
-  .card{
-    position:relative;
-    background:var(--surface);
-    border:1px solid var(--border);
-    border-radius:12px;
-    padding:12px;
-    font-size:14px;
-    box-shadow:0 10px 24px rgba(2,6,23,.06);
-  }
-  
-  .kv{ display:flex; justify-content:space-between; align-items:center; gap:8px; }
-  
-  .btn{
-    border:1px solid var(--border);
-    background:#f3f4f6;
-    padding:8px 12px;
-    border-radius:8px;
-    cursor:pointer;
-  }
-  .btn:hover{ filter:brightness(.98); }
-  .btn.primary{ background:var(--brand); color:#fff; border-color:transparent; }
-  .btn.success{ background:var(--success); color:#fff; border-color:transparent; }
-  .btn.danger{ background:var(--danger); color:#fff; border-color:transparent; }
-  .btn.ghost{ background:transparent; }
-  
-  .copy{ color:#2563eb; background:transparent; border:none; cursor:pointer; }
-  
-  .status{ margin-top:8px; color:#111827; }
-  .small{ color:var(--muted); font-size:13px; }
-  
+}
+
+/* ===========================
+   MAP ACTIONS (optional chips)
+   =========================== */
+
+.map-chips{
+  position:absolute; top:10px; left:10px; display:flex; gap:8px; flex-wrap:wrap;
+}
+.chip{
+  border:1px solid #cbd5e13a; background:#ffffff14; color:#fff;
+  padding:6px 10px; border-radius:999px; backdrop-filter: blur(6px);
+  font-weight:600; font-size:12px;
+}
+
+/* ===========================
+   UTILITIES
+   =========================== */
+
+.text-ok{ color:#86efac; }
+.text-warn{ color:#fde68a; }
+.text-err{ color:#fca5a5; }
+
+.hr{
+  height:1px; background:#ffffff14; border:0; margin:10px 0;
+}
+
+/* scrollbars (WebKit) */
+.dash-sidebar::-webkit-scrollbar{ width:10px; }
+.dash-sidebar::-webkit-scrollbar-thumb{
+  background:#17223c; border:2px solid #0b1225; border-radius:999px;
+}
+.dash-sidebar::-webkit-scrollbar-track{ background:transparent; }

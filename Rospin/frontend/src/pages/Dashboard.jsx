@@ -8,6 +8,17 @@ const GMAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 const GMAPS_LIBS = ["drawing"];           // stable, declared once
 const mapContainerStyle = { width: "100%", height: "100%" };
 
+<header className="dash-header">
+  <button
+    className="dash-menu-btn"
+    aria-label="Open menu"
+    onClick={() => setSidebarOpen(true)}
+  >
+    ☰
+  </button>
+  Flood Risk Dashboard
+</header>
+
 
 function Step({ n, title, children, done }) {
   return (
@@ -42,6 +53,8 @@ export default function Dashboard() {
   const [coords, setCoords] = useState({ lat: 51.505, lng: -0.09 });
   const [loading, setLoading] = useState(true);
   const [region, setRegion] = useState(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
   const { isLoaded, loadError } = useJsApiLoader({
     googleMapsApiKey: GMAPS_KEY,
     libraries: GMAPS_LIBS,                 // use the stable array
@@ -121,9 +134,9 @@ export default function Dashboard() {
   }, [region, coords]);
 
   const shortAreaLabel = () => {
-    if (!region) return "Nicio zonă selectată";
-    if (region.type === "polygon") return `Poligon cu ${region.coords.length} puncte`;
-    return "Dreptunghi selectat";
+    if (!region) return "No area selected";
+    if (region.type === "polygon") return `Polygon with ${region.coords.length} points`;
+    return "Rectangle selected";
   };
 
   // ---------------- effects ----------------
@@ -274,7 +287,7 @@ export default function Dashboard() {
       return;
     }
 
-    setStatus("Format necunoscut. Lipește BBOX sau WKT POLYGON.");
+    setStatus("Unknown format. Use BBOX or WKT POLYGON.");
     setTimeout(() => setStatus(""), 2000);
   };
 
@@ -284,7 +297,7 @@ export default function Dashboard() {
       const res = await fetch("/api/download/health");
       const data = await res.json();
       setDlHealth(data?.ok ? "OK" : JSON.stringify(data));
-      setStatus(data?.ok ? "Download API: OK ✅" : "Download API: răspuns neașteptat");
+      setStatus(data?.ok ? "Download API: OK ✅" : "Download API: unexpected response");
     } catch (e) {
       setDlHealth(`ERROR: ${e.message || e}`);
       setStatus(`Download API error ❌`);
@@ -295,11 +308,11 @@ export default function Dashboard() {
 
   const startDownload = async () => {
     if (!region || !start || !end) {
-      setStatus("Mai întâi selectează zona și datele.");
+      setStatus("First select the area and dates.");
       setTimeout(() => setStatus(""), 1500);
       return;
     }
-    setDlStatus("Se trimite cererea…");
+    setDlStatus("Sending request...");
     try {
       const res = await downloadAPI.run({
         bbox: region.bbox,
@@ -309,7 +322,7 @@ export default function Dashboard() {
       });
       const id = res.task_id || res.id || res.taskId;
       setDlTaskId(id);
-      setDlStatus(`În coadă (task ${id})`);
+      setDlStatus(`In queue (task ${id})`);
 
       if (dlTimer.current) clearInterval(dlTimer.current);
       dlTimer.current = setInterval(async () => {
@@ -325,11 +338,11 @@ export default function Dashboard() {
         } catch (e) {
           clearInterval(dlTimer.current);
           dlTimer.current = null;
-          setDlStatus(`Eroare la polling: ${e.message}`);
+          setDlStatus(`Error polling: ${e.message}`);
         }
       }, 2000);
     } catch (e) {
-      setDlStatus(`Eroare la trimitere: ${e.message}`);
+      setDlStatus(`Error sending: ${e.message}`);
     }
   };
 
@@ -337,18 +350,18 @@ export default function Dashboard() {
     if (!dlTaskId) return;
     try {
       await downloadAPI.cancel(dlTaskId);
-      setDlStatus("Anulat");
+      setDlStatus("Cancelled");
       if (dlTimer.current) clearInterval(dlTimer.current);
       dlTimer.current = null;
     } catch (e) {
-      setDlStatus(`Eroare la anulare: ${e.message}`);
+      setDlStatus(`Error cancelling: ${e.message}`);
     }
   };
 
   // Analysis
   const runAnalysis = async () => {
     if (!region || !start || !end) return;
-    setStatus("Pornesc analiza…");
+    setStatus("Starting analysis...");
     try {
       const { jobId } = await apiPost("/api/run-flood", {
         aoi_wkt: region.wkt,
@@ -357,7 +370,7 @@ export default function Dashboard() {
         end,
       });
       setJobId(jobId);
-      setStatus(`Job trimis (#${jobId}) — urmăresc progresul…`);
+      setStatus(`Job sent (#${jobId}) — tracking progress...`);
       if (pollTimer.current) clearInterval(pollTimer.current);
       pollTimer.current = setInterval(async () => {
         try {
@@ -366,16 +379,16 @@ export default function Dashboard() {
           if (info.status === "completed" || info.status === "failed") {
             clearInterval(pollTimer.current);
             pollTimer.current = null;
-            setStatus(info.status === "completed" ? "✅ Analiză finalizată" : "❌ Analiză eșuată");
+            setStatus(info.status === "completed" ? "✅ Analysis completed" : "❌ Analysis failed");
           }
         } catch (e) {
           clearInterval(pollTimer.current);
           pollTimer.current = null;
-          setStatus(`Eroare la polling: ${String(e.message || e)}`);
+          setStatus(`Error polling: ${String(e.message || e)}`);
         }
       }, 2000);
     } catch (e) {
-      setStatus(`Backend indisponibil: ${String(e.message || e)}`);
+      setStatus(`Backend unavailable: ${String(e.message || e)}`);
     } finally {
       setTimeout(() => setStatus(""), 1800);
     }
@@ -401,63 +414,67 @@ export default function Dashboard() {
       <header className="dash-header">Flood Risk Dashboard</header>
 
       <main style={{ display: "flex", flex: 1, minHeight: 0 }}>
-        {/* Sidebar (wizard) */}
-        <aside className="dash-sidebar" style={{ width: 380, overflowY: "auto" }}>
-          <h2 className="h2" style={{ marginBottom: 12 }}>Hai să începem 👇</h2>
+  {/* Overlay pe mobil când sidebarul e deschis */}
+  {sidebarOpen && <div className="dash-overlay" onClick={() => setSidebarOpen(false)} />}
 
-          <Step n={1} title="Selectează zona (pe hartă)" done={step1Done}>
+  {/* Sidebar (wizard) */}
+  <aside className={`dash-sidebar ${sidebarOpen ? "open" : ""}`} style={{ width: 380, overflowY: "auto" }}>
+    {/* buton close doar pe mobil */}
+    <h2 className="h2" style={{ marginBottom: 12 }}>Let's get started!</h2>
+
+          <Step n={1} title="Select area (on map)" done={step1Done}>
             {!region ? (
               <p style={{ marginTop: 0 }}>
-                Folosește uneltele <b>Polygon</b> sau <b>Rectangle</b> din colțul hărții, apoi apasă pe hartă ca
-                să desenezi. Poți oricând să ștergi și să refaci.
+                Use <b>Polygon</b> or <b>Rectangle</b> from map's corner, then click on the map to draw.
+                You can always delete and redo.
               </p>
             ) : (
               <>
                 <div className="kv">
-                  <div><b>Zonă:</b> {shortAreaLabel()}</div>
+                  <div><b>Area:</b> {shortAreaLabel()}</div>
                   <div style={{ display: "flex", gap: 8 }}>
                     <button className="btn" onClick={recenter}>Recenter</button>
-                    <button className="btn danger" onClick={deleteRegion}>Șterge</button>
+                    <button className="btn danger" onClick={deleteRegion}>Delete</button>
                   </div>
                 </div>
               </>
             )}
           </Step>
 
-          <Step n={2} title="Alege perioada" done={step2Done}>
+          <Step n={2} title="Select period" done={step2Done}>
             <div style={{ display: "grid", gap: 8 }}>
-              <label className="label">Data început</label>
+              <label className="label">Start date</label>
               <input className="input" type="date" value={start} onChange={(e) => setStart(e.target.value)} />
-              <label className="label">Data sfârșit</label>
+              <label className="label">End date</label>
               <input className="input" type="date" value={end} onChange={(e) => setEnd(e.target.value)} />
-              {!step2Done && <small className="muted">Alege ambele date.</small>}
+              {!step2Done && <small className="muted">Choose both dates.</small>}
             </div>
           </Step>
 
-          <Step n={3} title="Descarcă imaginile satelitare" done={step3Done}>
+          <Step n={3} title="Download satellite images" done={step3Done}>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <button
                 className="btn primary"
                 onClick={startDownload}
                 disabled={!step1Done || !step2Done}
-                title={!step1Done || !step2Done ? "Selectează zona și datele mai întâi" : "Trimite cererea de download"}
+                title={!step1Done || !step2Done ? "Select area and dates first" : "Submit download request"}
               >
-                Descarcă pereche S1
+                Download S1 pair
               </button>
               <button
                 className="btn"
                 onClick={checkDownloadHealth}
-                title="Verificare conexiune Download API"
+                title="Check Download API connection"
                 type="button"
               >
-                Verificare conexiune
+                Check connection
               </button>
               <button
                 className="btn danger"
                 onClick={cancelDownload}
                 disabled={!dlTaskId || /done|completed|error|failed|cancel/i.test(dlStatus || "")}
               >
-                Anulează
+                Cancel
               </button>
             </div>
             <div style={{ marginTop: 8, fontSize: 13 }}>
@@ -467,24 +484,24 @@ export default function Dashboard() {
             </div>
           </Step>
 
-          <Step n={4} title="Rulează analiza de inundație" done={step4Done}>
+          <Step n={4} title="Run flood analysis" done={step4Done}>
             <button
               className="btn success"
               onClick={runAnalysis}
               disabled={!step1Done || !step2Done}
-              title={!step1Done || !step2Done ? "Selectează zona și datele mai întâi" : "Rulează analiza"}
+              title={!step1Done || !step2Done ? "Select area and dates first" : "Run analysis"}
             >
-              Rulează analiza
+              Run analysis
             </button>
 
             {jobId && (
               <div style={{ marginTop: 8, fontSize: 13 }}>
                 <div><b>Job:</b> {jobId}</div>
-                <div><b>Status:</b> {jobInfo?.status || "în curs…"}</div>
+                <div><b>Status:</b> {jobInfo?.status || "in progress…"}</div>
                 {jobInfo?.result && (
                   <div style={{ marginTop: 6 }}>
-                    <div><b>% inundat:</b> {Number(jobInfo.result.flooded_pct).toFixed(2)}%</div>
-                    <div><b>Data:</b> {new Date(jobInfo.result.post_date).toLocaleDateString()}</div>
+                    <div><b>% flooded:</b> {Number(jobInfo.result.flooded_pct).toFixed(2)}%</div>
+                    <div><b>Date:</b> {new Date(jobInfo.result.post_date).toLocaleDateString()}</div>
                   </div>
                 )}
               </div>
@@ -501,9 +518,9 @@ export default function Dashboard() {
                 rows={3}
                 value={importText}
                 onChange={(e) => setImportText(e.target.value)}
-                placeholder="ex: 25.5,44.3,26.1,44.7  SAU  POLYGON((lng lat, ...))"
+                placeholder="ex: 25.5,44.3,26.1,44.7  OR  POLYGON((lng lat, ...))"
               />
-              <button className="btn" style={{ marginTop: 8 }} onClick={importAOI}>Setează din text</button>
+              <button className="btn" style={{ marginTop: 8 }} onClick={importAOI}>Select from text</button>
             </div>
 
             {region && (
@@ -526,7 +543,7 @@ export default function Dashboard() {
 
                 {region.type === "polygon" && (
                   <details>
-                    <summary style={{ cursor: "pointer" }}>Coordonate (vertices)</summary>
+                    <summary style={{ cursor: "pointer" }}>Coordinates (vertices)</summary>
                     <ul style={{ paddingLeft: 16 }}>
                       {region.coords.map((c, i) => (
                         <li key={i}>
@@ -538,7 +555,7 @@ export default function Dashboard() {
                 )}
 
                 <div className="section">
-                  <label className="label">Rulează via Python (CLI)</label>
+                  <label className="label">Run via Python (CLI)</label>
                   <textarea
                     className="textarea"
                     readOnly
@@ -555,7 +572,7 @@ export default function Dashboard() {
                     onClick={() =>
                       copy(
                         `python .\\main.py --username "YOUR_EMAIL" --start ${start} --end ${end} --aoi "${region.wkt}"`,
-                        "comanda CLI"
+                        "CLI"
                       )
                     }
                     disabled={!region || !start || !end}
@@ -590,7 +607,7 @@ export default function Dashboard() {
                 fontSize: 13,
               }}
             >
-              Sfat: folosește butonul <b>Polygon</b> sau <b>Rectangle</b> din meniu (sus, pe hartă)
+              Tip: use button <b>Polygon</b> or <b>Rectangle</b> from the menu (top, on the map) to select an area.
             </div>
           )}
 
@@ -608,7 +625,7 @@ export default function Dashboard() {
                 onLoad={(dm) => (drawingManagerRef.current = dm)}
                 onPolygonComplete={(polygon) => {
                   if (mapShapeRef.current) {
-                    alert("Șterge zona existentă înainte de a desena una nouă.");
+                    alert("Delete existing area before drawing a new one.");
                     polygon.setMap(null);
                     return;
                   }
@@ -637,7 +654,7 @@ export default function Dashboard() {
                 }}
                 onRectangleComplete={(rectangle) => {
                   if (mapShapeRef.current) {
-                    alert("Șterge zona existentă înainte de a desena una nouă.");
+                    alert("Delete existing area before drawing a new one.");
                     rectangle.setMap(null);
                     return;
                   }
