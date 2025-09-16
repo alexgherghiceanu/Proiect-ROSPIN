@@ -1,0 +1,8 @@
+pandas
+requests
+tqdm
+rasterio
+numpy
+numexpr
+tables
+xgboost
