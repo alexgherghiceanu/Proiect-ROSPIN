@@ -1,5 +1,6 @@
 import os
 import pandas as pd
+import argparse
 from getpass import getpass
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -7,8 +8,18 @@ from downloader import get_tokens, search_products, download_and_extract
 from satellite_down import SafeProcessor
 from predict_flood import predict_flood
 
+def parse_args():
+    p = argparse.ArgumentParser(
+        description="Predictie"
+    )
+    p.add_argument("--aoi", type=str, required=True, help="ex. POLYGON((26.0 44.4, 26.2 44.4, 26.2 44.6, 26.0 44.6, 26.0 44.4))")
+    p.add_argument("--start", type=str, required=True, help="ex. 2021-01-01T00:00:00Z")
+    p.add_argument("--end", type=str, required=True, help="ex. 2021-12-31T23:59:59Z")
+
+    return p.parse_args()
 
 def main():
+    args = parse_args()
     # --- Authentication ---
     username = input("Copernicus Username: ")
     password = getpass("Copernicus Password: ")
@@ -16,9 +27,9 @@ def main():
     headers = {"Authorization": f"Bearer {access_token}"}
 
     # --- Search area and dates (Bucharest AOI example) ---
-    aoi_wkt = "POLYGON((26.0 44.4, 26.2 44.4, 26.2 44.6, 26.0 44.6, 26.0 44.4))"
-    start_date = "2021-01-01T00:00:00Z"
-    end_date = "2021-12-31T23:59:59Z"
+    aoi_wkt = args.aoi
+    start_date = args.start
+    end_date = args.end
 
     download_dir = "downloads"
     os.makedirs(download_dir, exist_ok=True)
