@@ -1,73 +1,55 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { apiPost } from "../api/client";
-import "../styles.css";
 
 export default function Login() {
-  const [email, setEmail] = useState("");   // use email instead of username
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
-  const [loading, setLoading] = useState(false);
-  const nav = useNavigate();
+  const navigate = useNavigate();
 
-  const submit = async (e) => {
+  const login = async (e) => {
     e.preventDefault();
     setErr("");
-    setLoading(true);
+    setBusy(true);
     try {
-      const data = await apiPost("/login", { email, password });
-      if (!data?.token) throw new Error("Invalid response from server");
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Login failed");
       localStorage.setItem("token", data.token);
-      nav("/dashboard");
+      navigate("/dashboard");
     } catch (e) {
-      setErr(typeof e === "string" ? e : (e.message || "Login failed"));
+      setErr(e.message);
     } finally {
-      setLoading(false);
+      setBusy(false);
     }
   };
 
   return (
-    <div className="page center">
-      <form onSubmit={submit} className="card auth-card stack">
-        <h2 style={{ margin: 0 }}>Login</h2>
-        <p className="note" style={{ marginTop: -6 }}>
-          Welcome back — sign in to continue.
-        </p>
+    <div className="auth">
+      <form className="auth__card" onSubmit={login}>
+        <h2>Welcome back</h2>
+        <p className="muted">Log in to access the dashboard</p>
+
+        <label className="label">E-mail</label>
+        <input className="input" value={email} onChange={(e)=>setEmail(e.target.value)} required/>
+
+        <label className="label">Password</label>
+        <input className="input" type="password" value={password} onChange={(e)=>setPassword(e.target.value)} required/>
 
         {err && <div className="alert">{err}</div>}
 
-        <div>
-          <label className="label">Email</label>
-          <input
-            className="input"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            autoComplete="username"
-          />
-        </div>
-        <div>
-          <label className="label">Password</label>
-          <input
-            className="input"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoComplete="current-password"
-          />
-        </div>
+        <button className="btn primary big" disabled={busy}>
+          {busy ? "Signing in…" : "Sign in"}
+        </button>
 
-        <div className="actions">
-          <button
-            className="btn primary"
-            type="submit"
-            disabled={loading || !email || !password}
-          >
-            {loading ? "Signing in…" : "Login"}
-          </button>
-          <Link className="btn" to="/register">Create account</Link>
-        </div>
+        <p className="muted small">No account? <Link to="/register">Create one</Link></p>
       </form>
     </div>
   );
 }
+

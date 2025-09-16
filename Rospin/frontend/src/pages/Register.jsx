@@ -1,98 +1,53 @@
 import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
-import { apiPost } from "../api/client";
-import "../styles.css";
+import { Link, useNavigate } from "react-router-dom";
 
 export default function Register() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [confirm, setConfirm] = useState("");
+  const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
-  const [loading, setLoading] = useState(false);
-  const nav = useNavigate();
+  const navigate = useNavigate();
 
   const submit = async (e) => {
     e.preventDefault();
     setErr("");
-
-    // check password match
-    if (password !== confirm) {
-      setErr("Passwords do not match.");
-      return;
-    }
-
-    // check email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      setErr("Please enter a valid email address.");
-      return;
-    }
-
-    setLoading(true);
+    setBusy(true);
     try {
-      await apiPost("/register", { email, password });
-      nav("/login");
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Registration failed");
+      // after register, auto-login or redirect to login
+      navigate("/login");
     } catch (e) {
-      setErr(typeof e === "string" ? e : (e.message || "Registration failed"));
+      setErr(e.message);
     } finally {
-      setLoading(false);
+      setBusy(false);
     }
   };
 
   return (
-    <div className="page center">
-      <form onSubmit={submit} className="card auth-card stack">
-        <h2 style={{ margin: 0 }}>Create account</h2>
-        <p className="note" style={{ marginTop: -6 }}>
-          Join ROSPIN and start analyzing floods.
-        </p>
+    <div className="auth">
+      <form className="auth__card" onSubmit={submit}>
+        <h2>Create account</h2>
+        <p className="muted">Takes 10 seconds</p>
+
+        <label className="label">E-mail</label>
+        <input className="input" value={email} onChange={(e)=>setEmail(e.target.value)} required/>
+
+        <label className="label">Password</label>
+        <input className="input" type="password" value={password} onChange={(e)=>setPassword(e.target.value)} required/>
 
         {err && <div className="alert">{err}</div>}
 
-        <div>
-          <label className="label">Email</label>
-          <input
-            className="input"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            autoComplete="email"
-            required
-          />
-        </div>
-        <div>
-          <label className="label">Password</label>
-          <input
-            className="input"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoComplete="new-password"
-            required
-          />
-        </div>
-        <div>
-          <label className="label">Confirm password</label>
-          <input
-            className="input"
-            type="password"
-            value={confirm}
-            onChange={(e) => setConfirm(e.target.value)}
-            autoComplete="new-password"
-            required
-          />
-        </div>
+        <button className="btn primary big" disabled={busy}>
+          {busy ? "Creating…" : "Create account"}
+        </button>
 
-        <div className="actions">
-          <button
-            className="btn primary"
-            type="submit"
-            disabled={loading || !email || !password || !confirm}
-          >
-            {loading ? "Creating…" : "Register"}
-          </button>
-          <Link className="btn" to="/login">Back to login</Link>
-        </div>
+        <p className="muted small">Already have an account? <Link to="/login">Sign in</Link></p>
       </form>
     </div>
   );
