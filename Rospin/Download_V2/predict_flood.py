@@ -28,13 +28,13 @@ BASE_FEATURES: List[str] = [
     "single_Drought_Mask_mean","single_Drought_Mask_std","single_Drought_Mask_min","single_Drought_Mask_max",
     "single_SAR_Urban_Mask_mean","single_SAR_Urban_Mask_std","single_SAR_Urban_Mask_min","single_SAR_Urban_Mask_max",
     "lat_rounded","lon_rounded",
-    # vom adăuga și derivatele mai jos
+   
 ]
 
 DERIVED_RULES = {
     "ndvi_range": ("single_NDVI_max", "single_NDVI_min"),
     "ndwi_range": ("single_NDWI_max", "single_NDWI_min"),
-    # dacă mai ai nevoie: "ndmi_range": ("single_NDMI_max","single_NDMI_min"),
+    #  "ndmi_range": ("single_NDMI_max","single_NDMI_min"),
     #                     "vv_range": ("single_VV_Band_max","single_VV_Band_min"), etc.
 }
 
@@ -71,13 +71,13 @@ def _get_model_feature_names(model, df_cols: Sequence[str]) -> List[str]:
     if hasattr(model, "feature_names") and model.feature_names:
         return list(model.feature_names)
 
-    # 4) fallback: folosește ce ai în CSV, intersectate cu setul de bază
+  
     return [c for c in BASE_FEATURES if c in df_cols]
 
 
 def _ensure_derived(df: pd.DataFrame, require_cols: Sequence[str]) -> pd.DataFrame:
     df = df.copy()
-    # calculează mereu cele derivate de bază (robust la lipsuri)
+
     for derived, (a, b) in DERIVED_RULES.items():
         if derived in require_cols or derived in getattr(df, "columns", []):
             if a in df.columns and b in df.columns:
@@ -85,7 +85,7 @@ def _ensure_derived(df: pd.DataFrame, require_cols: Sequence[str]) -> pd.DataFra
             else:
                 df[derived] = 0.0
         else:
-            # chiar dacă nu sunt cerute explicit acum, le calculăm preventiv
+  
             if a in df.columns and b in df.columns and derived not in df.columns:
                 df[derived] = df[a] - df[b]
     return df
@@ -109,9 +109,9 @@ def _parse_expected_from_xgb_error(msg: str) -> Optional[List[str]]:
     if not m:
         return None
     raw = m.group(1)
-    # split pe virgulă și spații
+
     names = [t.strip().strip("'\"") for t in raw.split(",")]
-    # curăță goluri
+
     names = [n for n in names if n]
     return names or None
 
@@ -131,20 +131,20 @@ def predict_flood(
     df = pd.read_csv(csv_features_path)
     model = load_pickle(model_path)
 
-    # 1) determină schema din model (dacă se poate)
+
     model_feats = _get_model_feature_names(model, df.columns)
 
-    # 2) calculează și atașează derivatele (ndvi_range/ndwi_range etc.)
+  
     df = _ensure_derived(df, model_feats)
 
-    # 3) reconstruiește X exact pe ordinea cerută de model
+  
     expected = [c for c in model_feats if c in df.columns]
     if not expected:
-        # fallback: intersectează cu baza și reîncearcă
+      
         expected = [c for c in BASE_FEATURES + list(DERIVED_RULES.keys()) if c in df.columns]
     X = _build_X(df, expected)
 
-    # 4) scaler separat (dacă nu e Pipeline)
+
     if scaler_path:
         if os.path.exists(scaler_path):
             scaler = load_pickle(scaler_path)
@@ -155,7 +155,7 @@ def predict_flood(
         else:
             warnings.warn(f"Scaler path dat dar nu există: {scaler_path} — continui fără scaler.")
 
-    # 5) predicție – încercare normală
+
     def _make_out(prob, lab):
         out = pd.DataFrame({"prob_flood": prob, "label": lab})
         for c in id_cols:
@@ -181,7 +181,7 @@ def predict_flood(
             print(f"✅ Predicții scrise în: {out_csv}")
             return out
         else:
-            # încercare Booster direct
+   
             try:
                 import xgboost as xgb
                 dm = xgb.DMatrix(X.values, feature_names=list(X.columns))
@@ -200,16 +200,16 @@ def predict_flood(
                 return out
 
     except Exception as e:
-        # 6) fallback: parsează lista “expected … in input data” din mesajul XGBoost
+    
         names_from_err = _parse_expected_from_xgb_error(str(e))
         if names_from_err:
-            # asigură derivatele cerute explicit de mesaj
+      
             df = _ensure_derived(df, names_from_err)
-            # reconstruiește strict cu aceste coloane, în ordinea din mesaj
+          
             strict = [c for c in names_from_err if c in df.columns]
             X2 = _build_X(df, strict)
             try:
-                # repetă cu validate_features=False (ignoră verificarea numelor)
+         
                 if hasattr(model, "predict_proba"):
                     proba = model.predict_proba(X2, validate_features=False)[:, 1]
                     label = (proba >= 0.5).astype(int)
@@ -227,7 +227,7 @@ def predict_flood(
                     f"Eșec la retry cu schema din eroare: {e2}\n"
                     f"Retry features: {strict}\n"
                 )
-        # fără listă în mesaj → aruncă eroarea originală cu context
+
         raise RuntimeError(
             f"Eșec la predict: {e}\n"
             f"Expected (model): {model_feats}\n"
